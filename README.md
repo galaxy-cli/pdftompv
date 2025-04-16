@@ -1,8 +1,7 @@
-PDF to MP3 converter
-
 The purpose of this bash script is to be able to simply convert PDF to MP3
 
-There are few optioons such as
+
+There are few optioons such as:
 
 --url
 1. Uses `wget` to download a `pdf` file from a page
