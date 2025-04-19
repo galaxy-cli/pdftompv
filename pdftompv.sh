@@ -5,10 +5,6 @@
 #               #
 #################
 
-#
-# Google Search `filetype: pdf` to find pdf to read
-#
-
 case "$1" in
 
 	--pdf)
