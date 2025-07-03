@@ -8,7 +8,6 @@
 # https://github.com/galaxey-cli/pdftompv
 # pdftompv.sh - PDF to MP3 converter utility using pdftotext, text2wave (Festival), LAME, and MPV
 
-# Dependency checks
 for cmd in pdftotext text2wave lame mpv open; do
     command -v "$cmd" >/dev/null 2>&1 || { echo "$cmd not found"; exit 1; }
 done
