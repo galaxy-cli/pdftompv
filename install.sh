@@ -8,6 +8,5 @@
 # https://github.com/galaxey-cli/pdftompv
 # pdftompv.sh - PDF to MP3 converter utility using pdftotext, text2wave (Festival), LAME, and MPV
 
-# Updates repos and installs relevant packages for pdftompv.sh
 sudo apt install update
 sudo apt install -y poppler-utils wget festival lame
