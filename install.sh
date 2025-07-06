@@ -7,6 +7,7 @@
 # https://github.com/galaxey-cli/pdftompv
 # pdftompv.sh - PDF to MP3 converter utility using pdftotext, text2wave (Festival), LAME, and MPV
 
+# --- Dependency checks ---
 check_and_install_package() {
     pkg="$1"
     if ! dpkg -s "$pkg" &>/dev/null; then
@@ -32,7 +33,7 @@ check_and_install_package() {
 check_and_install_package poppler-utils
 
 check_commands() {
-    for cmd in  wget festival lame mpv; do
+    for cmd in wget festival lame mpv; do
         if ! command -v "$cmd" &> /dev/null; then
             echo "Error: '$cmd' is required but not installed."
             read -p "Would you like to install it now? (y/n) " answer
@@ -55,3 +56,18 @@ check_commands() {
     done
 }
 check_commands
+
+# --- Install pdftompv.sh to /usr/local/bin ---
+SCRIPT_NAME="pdftompv.sh"
+TARGET_NAME="pdftompv"
+INSTALL_PATH="/usr/local/bin/$TARGET_NAME"
+
+if [[ -f "$SCRIPT_NAME" ]]; then
+    echo "Installing $SCRIPT_NAME to $INSTALL_PATH..."
+    sudo cp "$SCRIPT_NAME" "$INSTALL_PATH"
+    sudo chmod +x "$INSTALL_PATH"
+    echo "Installed! You can now run 'pdftompv' from anywhere."
+else
+    echo "Error: $SCRIPT_NAME not found in current directory."
+    exit 1
+fi
