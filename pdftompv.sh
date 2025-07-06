@@ -1,26 +1,23 @@
 #!/bin/bash
-#                  _  __ _                                 _ 
-#        _ __   __| |/ _| |_ ___  _ __ ___  _ ____   _____| |__ 
-#       | '_ \ / _` | |_| __/ _ \| '_ ` _ \| '_ \ \ / / __| '_ \ 
+#        _ __   __| |/ _| |_ ___  _ __ ___  _ ____   _____| |
+#       | '_ \ / _` | |_| __/ _ \| '_ ` _ \| '_ \ \ / / __| '_ \
 #       | |_) | (_| |  _| || (_) | | | | | | |_) \ V /\__ \ | | |
 #       | .__/ \__,_|_|  \__\___/|_| |_| |_| .__/ \_(_)___/_| |_|
 #       |_|                                |_|
 # https://github.com/galaxey-cli/pdftompv
 # pdftompv.sh - PDF to MP3 converter utility using pdftotext, text2wave (Festival), LAME, and MPV
 
-for cmd in pdftotext text2wave lame mpv open; do
-    command -v "$cmd" >/dev/null 2>&1 || { echo "$cmd not found"; exit 1; }
-done
-
+# --- Functions ---
 print_usage() {
     cat <<EOF
 USAGE
-  pdftompv.sh --pdf [PDF]        # Convert PDF to MP3
-  pdftompv.sh --open [PDF] [MP3] # Open PDF and play MP3
-
+  pdftompv [PDF] [MP3] --open
+  pdftompv [PDF] --pdf
+  pdftompv [URL] --url
 FLAGS
   --pdf   Convert PDF to MP3
   --open  Open PDF and play MP3
+  --url   Download PDF from URL
 EOF
 }
 
@@ -31,9 +28,10 @@ convert_pdf_to_mp3() {
         exit 1
     fi
 
-    txt=$(mktemp /tmp/pdftompv.XXXXXX.txt)
+    echo "Coverting to MP3..."
+    txt="${pdf%.pdf}.txt"
     mp3="${txt%.txt}.mp3"
-    trap 'rm -f "$txt" "$mp3"' INT EXIT
+    trap 'rm -f "$txt"' INT EXIT
 
     pdftotext -raw "$pdf" "$txt" || { echo "pdftotext failed"; exit 1; }
     text2wave "$txt" | lame - "$mp3" || { echo "Conversion to MP3 failed"; exit 1; }
@@ -55,22 +53,85 @@ open_pdf_and_mp3() {
     mpv "$mp3"
 }
 
-case "$1" in
-    --pdf)
-        if [[ -z "$2" ]]; then
-            print_usage
+download_pdf() {
+    url="$1"
+    # Extract filename from URL
+    filename="${url##*/}"
+    # Optional: Check if it ends with .pdf
+    if [[ "${filename##*.}" != "pdf" ]]; then
+        echo "URL does not appear to be a PDF file."
+        exit 1
+    fi
+    # Download using wget
+    wget -O "$filename" "$url" || { echo "Download failed."; exit 1; }
+    echo "Downloaded PDF: $filename"
+}
+
+# --- Argument parsing ---
+input=""
+url=""
+do_pdf=0
+do_open=0
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --pdf)
+            do_pdf=1
+            shift
+            ;;
+        --open)
+            do_open=1
+            shift
+            ;;
+        --url)
+            url=1
+            shift
+            ;;
+        *)
+            # Assume first non-flag is the input (file or URL)
+            if [[ -z "$input" ]]; then
+                input="$1"
+            else
+                echo "Unknown argument: $1"
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+# --- Logic based on flags ---
+if [[ -z "$input" ]]; then
+    print_usage
+    exit 1
+fi
+
+# If --url, download the PDF first
+if [[ "$url" == "1" ]]; then
+    download_pdf "$input"
+    # After downloading, set input to the filename
+    filename="${input##*/}"
+    input="$filename"
+fi
+
+# If --pdf, convert to mp3
+if [[ "$do_pdf" == "1" ]]; then
+    convert_pdf_to_mp3 "$input"
+fi
+
+# If --open, open PDF and MP3
+if [[ "$do_open" == "1" ]]; then
+    base="${input%.pdf}"
+    mp3="${base}.mp3"
+    if [[ -f "$mp3" ]]; then
+        open_pdf_and_mp3 "$input" "$mp3"
+    else
+        # Only open the PDF if MP3 doesn't exist
+        if [[ -f "$input" && "${input##*.}" == "pdf" ]]; then
+            open "$input"
+        else
+            echo "No PDF file to open."
             exit 1
         fi
-        convert_pdf_to_mp3 "$2"
-        ;;
-    --open)
-        if [[ -z "$2" || -z "$3" ]]; then
-            print_usage
-            exit 1
-        fi
-        open_pdf_and_mp3 "$2" "$3"
-        ;;
-    *)
-        print_usage
-        ;;
-esac
+    fi
+fi
