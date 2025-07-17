@@ -60,15 +60,19 @@ check_commands
 
 # --- Functions ---
 print_usage() {
-    cat <<EOF
-USAGE
-  pdftompv PDF MP3 --open
-  pdftompv PDF --pdf
-  pdftompv URL --url
-FLAGS
-  --pdf   Convert PDF to MP3
-  --open  Open PDF and play MP3
-  --url   Download PDF from URL
+  cat <<EOF
+USAGE:
+  pdftompv [OPTIONS] input
+
+OPTIONS:
+  --pdf       Convert PDF file to MP3
+  --open      Open PDF file and play MP3
+  --url       Download PDF from URL before processing
+
+EXAMPLES:
+  pdftompv --pdf book.pdf
+  pdftompv --url https://example.com/file.pdf --pdf
+  pdftompv --open book.pdf
 EOF
 }
 
@@ -89,18 +93,22 @@ convert_pdf_to_mp3() {
     echo "MP3 created: $mp3"
 }
 
+open_file() {
+    local file="$1"
+    if command -v xdg-open &>/dev/null; then
+        xdg-open "$file" &
+    elif command -v open &>/dev/null; then
+        open "$file" &
+    else
+        echo "Error: Cannot find a command to open files on your system."
+        exit 1
+    fi
+}
+
 open_pdf_and_mp3() {
-    pdf="$1"
-    mp3="$2"
-    if [[ ! -f "$pdf" || "${pdf##*.}" != "pdf" ]]; then
-        echo "First argument must be a PDF file."
-        exit 1
-    fi
-    if [[ ! -f "$mp3" || "${mp3##*.}" != "mp3" ]]; then
-        echo "Second argument must be an MP3 file."
-        exit 1
-    fi
-    open "$pdf" &
+    local pdf="$1"
+    local mp3="$2"
+    open_file "$pdf"
     mpv "$mp3"
 }
 
