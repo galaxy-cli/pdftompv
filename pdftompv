@@ -14,7 +14,7 @@ check_dep() {
     local cmd="$1"
     local pkg="$2"
     if ! command -v "$cmd" &>/dev/null; then
-        echo "pdftompv: [!] '$cmd' (from $pkg) is not installed"
+        echo "pdftompv: '$cmd' (from $pkg) is not installed"
         read -p "Install it now? [y/N] " answer
         if [[ "$answer" =~ ^[Yy](es)?$ ]]; then
             sudo apt-get update && sudo apt-get install -y "$pkg"
@@ -44,9 +44,9 @@ OPTION
   --url       Download PDF from URL before processing
 
 EXAMPLES
-  pdftompv --pdf document.pdf
-  pdftompv --url https://www.example.com/document.pdf
-  pdftompv --open document.mp3
+  pdftompv --pdf document.pdf                           Convers PDF file to MP3
+  pdftompv --url https://www.example.com/document.pdf   Dowloads PDF from URL 
+  pdftompv --open document.mp3                          Open PDF file and play MP3
 EOF
 }
 
@@ -58,7 +58,7 @@ convert_pdf_to_mp3() {
     local text_content=$(pdftotext -raw "$pdf" - 2>/dev/null)    
     local char_count=${#text_content}
     
-    [[ "$char_count" -eq 0 ]] && { echo "pdftompv: [!] Scanned PDF" >&2; exit 1; }
+    [[ "$char_count" -eq 0 ]] && { echo "pdftompv: Scanned PDF" >&2; exit 1; }
 
     echo "pdftompv: Converting to MP3..." >&2
 
@@ -68,14 +68,14 @@ convert_pdf_to_mp3() {
         pv -t > "$mp3"; then    
         echo -e "\a\npdftompv: $mp3 created"
     else
-        echo -e "\a\npdftompv: [!] Conversion failed" >&2
+        echo -e "\a\npdftompv: Conversion failed" >&2
         exit 1
     fi
 }
 
 open_file() {
     local file="$1"
-    { evince "$file" || echo "pdftompv: [!] No viewer found"; } &>/dev/null &
+    { evince "$file" || echo "pdftompv: No viewer found"; } &>/dev/null &
 }
 
 download_pdf() {
@@ -83,15 +83,15 @@ download_pdf() {
     local raw_filename=$(basename "$url")
     local filename=$(python3 -c "import urllib.parse; print(urllib.parse.unquote('$raw_filename'))")
 
-    [[ "${filename,,}" != *.pdf ]] && { echo "pdftompv: [!] Not a PDF URL" >&2; exit 1; }
+    [[ "${filename,,}" != *.pdf ]] && { echo "pdftompv: Not a PDF URL" >&2; exit 1; }
 
     echo "pdftompv: Downloading PDF..." >&2
-    wget -q --show-progress -O "$filename" "$url" || { echo "pdftompv: [!] Download failed" >&2; exit 1; }
+    wget -q --show-progress -O "$filename" "$url" || { echo "pdftompv: Download failed" >&2; exit 1; }
     echo "$filename"
 }
 
 # --- MAIN LOGIC ---
-[[ $# -eq 0 ]] && { echo "pdftompv: [!] No arguments"; echo "Try 'pdftompv --help' for more information"; exit 1; }
+[[ $# -eq 0 ]] && { echo "pdftompv: No arguments"; echo "Try 'pdftompv --help' for more information"; exit 1; }
 
 input=""
 use_url=false
@@ -104,7 +104,7 @@ while [[ $# -gt 0 ]]; do
         --open) do_open=true ;;
         --url)  use_url=true ;;
         --help) print_usage; exit 0 ;;
-        -*)     echo "pdftompv: [!] Unknown option: $1"; exit 1 ;;
+        -*)     echo "pdftompv: Unknown option: $1"; exit 1 ;;
         *)      input="$1" ;;
     esac
     shift
@@ -119,12 +119,12 @@ pdf_file="${base}.pdf"
 mp3_file="${base}.mp3"
 
 if $do_pdf; then
-    [[ -f "$pdf_file" ]] && convert_pdf_to_mp3 "$pdf_file" || { echo "pdftompv: [!] PDF not found"; exit 1; }
+    [[ -f "$pdf_file" ]] && convert_pdf_to_mp3 "$pdf_file" || { echo "pdftompv: PDF not found"; exit 1; }
 fi
 
 if $do_open; then
     if [[ ! -f "$pdf_file" && ! -f "$mp3_file" ]]; then
-        echo "pdftompv: [!] No files found to open for '$base'" >&2
+        echo "pdftompv: No files found to open for '$base'" >&2
         exit 1
     fi
 
