@@ -91,7 +91,7 @@ download_pdf() {
 }
 
 # --- MAIN LOGIC ---
-[[ $# -eq 0 ]] && { echo "pdftompv: No arguments"; echo "Try 'pdftompv --help' for more information"; exit 1; }
+[[ $# -eq 0 ]] && { echo "Try 'pdftompv --help' for more information"; exit 1; }
 
 input=""
 use_url=false
