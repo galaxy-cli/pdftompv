@@ -129,8 +129,10 @@ if $do_open; then
     fi
 
     echo "Opening $base..." >&2
-    {
-        [[ -f "$pdf_file" ]] && open_file "$pdf_file"
-        [[ -f "$mp3_file" ]] && mpv --msg-level=all=no "$mp3_file"
-    } & disown
+    
+    [[ -f "$pdf_file" ]] && open_file "$pdf_file"
+    
+    if [[ -f "$mp3_file" ]]; then
+        mpv "$mp3_file"
+    fi
 fi
