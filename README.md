@@ -1,31 +1,43 @@
 # pdftompv
-A lightweight Linux utility to download, convert, and listen to PDF documents as audiobooks using the Festival speech engine and MPV.
+
+A high-performance Linux utility to download, convert, and listen to PDF documents as high-quality AI audiobooks using Microsoft Edge's Neural TTS and MPV.
+
 ## Features
 
-* URL Support: Download PDFs directly from the web.
-* Optimized TTS: Uses text2wave and lame for high-speed speech encoding.
-* Smart Logic: Automatically pairs PDFs with their MP3 counterparts.
-* Foreground Reading: Opens evince and mpv simultaneously for a read-along experience.
-* Dependency Management: Automatically checks for and offers to install required tools.
+* **Neural AI Voices:** Uses Microsoft Edge's "Neural" TTS for natural-sounding, human-like narration (far superior to legacy engines like Festival).
+* **High-Capacity Stability:** Automatically chunks long documents (500+ pages) to prevent API timeouts and memory errors.
+* **Smart Text Cleaning:** Strips unnecessary PDF line breaks and dramatic punctuation pauses for a smoother listening flow.
+* **Read-Along Experience:** Opens `evince` and `mpv` simultaneously so you can follow the text while listening.
+* **Integrated Timer:** Displays per-chunk processing times and total conversion duration using `pv`.
+* **Automatic Cleanup:** Self-cleaning logic ensures temporary text and audio chunks are deleted upon completion or interruption.
 
 ## Installation
 
-   1. Save the script as pdftompv.
-   2. Make it executable:
+1. Save the script as `pdftompv`.
+2. Make it executable:
 ```
 chmod +x pdftompv
 ```
-   
-   3. (Optional) Move to your path:  
+3. (Optional) Move it to your path:
 ```
 sudo mv pdftompv /usr/local/bin/
 ```
-   
-   
-## Usage
 
-`pdftompv [OPTION] [URL | PDF]`
+## Usage
+```
+pdftompv [OPTION] [URL | PDF]
+```
+
 ## Options
+| Option | Description
+| --- | ---
+| `--pdf` | Convert a local PDF file to a Neural AI MP3
+| `--url` | Download a PDF from a URL (best used with --pdf)
+| `--open` | Open the PDF in a viewer and play the generated audiobook
+| `--help` |	Show the help menu
+
+
+
 
 | Option | Description |
 |---|---|
@@ -33,23 +45,3 @@ sudo mv pdftompv /usr/local/bin/
 | `--url `| Download a PDF from a URL (best used with `--pdf`) |
 | `--open` | Open the PDF in a viewer and play the audiobook |
 | `--help` | Show the help menu |
-
-## Examples
-```
-# Convert a local book
-pdftompv --pdf book.pdf
-# Download and convert a web PDF
-pdftompv --url https://example.com --pdf
-# Listen and read along
-pdftompv --open book.pdf
-```
-## Dependencies
-The script will prompt you to install these via apt if missing:
-
-* `poppler-utils` (`pdftotext`)
-* `festival`
-* `lame`
-* `mpv`
-* `evince`
-* `pv`
-* `wget`
