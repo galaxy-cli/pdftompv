@@ -62,54 +62,57 @@ EOF
 convert_pdf_to_mp3() {
     local pdf="$1"
     local mp3_final="${pdf%.pdf}.mp3"
-    local txt_file="${pdf%.pdf}.txt"
-    local chunk_prefix="temp_chunk_$(date +%s)"
     
-    # Specific cleanup function for temporary conversion files only
-    cleanup_chunks() {
-        echo -e "\nCleaning up temporary chunks..."
-        rm -f "${chunk_prefix}"_* "$txt_file"
+    # Create a unique, private workspace in /tmp
+    local work_dir=$(mktemp -d -t pdftompv-XXXXXXXX)
+    
+    # Simple cleanup: remove the entire folder
+    cleanup() {
+        echo -e "\nCleaning up temporary files..."
+        rm -rf "$work_dir"
     }
-    # Trap ensures cleanup even if conversion is cancelled mid-way
-    trap cleanup_chunks EXIT INT TERM
+    trap cleanup EXIT INT TERM
 
     local start_time=$SECONDS
+    local txt_file="$work_dir/extracted.txt"
+
     echo "Extracting text..." >&2
     pdftotext -raw "$pdf" "$txt_file" 2>/dev/null
     
+    # Clean up the text inside the temp dir
     sed -i ':a;N;$!ba;s/\n/ /g' "$txt_file"
     sed -i 's/\.\.\././g' "$txt_file"
 
     [[ ! -s "$txt_file" ]] && { echo "ERROR - Extraction failed." >&2; exit 1; }
 
-    # Split into manageable sizes to prevent API timeouts
-    split -b 25000 "$txt_file" "${chunk_prefix}_"
-    local chunks=("${chunk_prefix}"_*)
+    # Split files inside the temp dir
+    split -b 25000 "$txt_file" "$work_dir/chunk_"
+    
+    local chunks=("$work_dir"/chunk_[a-z]*)
     local total=${#chunks[@]}
     local count=1
 
     echo "Converting to MP3 (Neural AI)..." >&2
     for chunk in "${chunks[@]}"; do
         echo -n "Processing chunk [$count/$total]... " >&2
-        echo
         
+        # Output mp3 chunks to the temp dir as well
         if ! edge-tts --file "$chunk" --write-media "${chunk}.mp3" --rate=+25% --voice en-US-AriaNeural &>/dev/null; then
             echo "Failed." >&2
             exit 1
         fi
-
-        echo -n 
         ((count++))
     done
 
     echo "Stitching chunks together..." >&2
-    cat "${chunk_prefix}"_*.mp3 > "$mp3_final"
+    # Combine only the .mp3 chunks from the temp dir into your final destination
+    cat "$work_dir"/chunk_*.mp3 > "$mp3_final"
 
     local total_time=$(( SECONDS - start_time ))
-    echo -e "\nSuccess: $mp3_final created (${total_time%60} sec)"
+    echo -e "\nSuccess: $mp3_final created ($total_time sec)"
     
-    # Clean up and remove trap so it doesn't fire when the script officially exits
-    cleanup_chunks
+    # This triggers the trap immediately
+    cleanup
     trap - EXIT INT TERM
 }
 
@@ -156,5 +159,5 @@ done
 $use_url && input=$(download_pdf "$input")
 
 # Sequence: Convert first, then open
-$do_pdf && convert_pdf_to_mp3 "$input"
-$do_open && open_file "$input"
+[[ "$do_pdf" == true ]] && convert_pdf_to_mp3 "$input"
+[[ "$do_open" == true ]] && open_file "$input"
