@@ -6,396 +6,193 @@
 # |_|                                |_|
 #
 # pdftompv - PDF to MP3 converter using pdftotext, edge-tts (Neural AI), and MPV
-# Adheres cleanly to POSIX and GNU command-line standard interface designs.
 #
 # Project: https://github.com
 
-# Semantic Versioning Identifier (SemVer 2.0.0)
-VERSION="1.9.0"
+VERSION="1.9.6"
 PROGNAME=$(basename "$0")
+SELECTED_VOICE="en-US-AriaNeural"
+declare -a WORK_DIRS=()
 
-# Variables to track structural operational states
-EVINCE_PID=""
-WORK_DIR_GLOBAL=""
-ORIGINAL_SUFFIX=""  # Holds 'pdf', 'mp3', or 'wildcard'
-SELECTED_VOICE="en-US-AriaNeural" # Default Voice Engine
-VOICE_EXPLICITLY_SET=false
-
-# Comprehensive POSIX-Compliant Cleanup Routine
 cleanup() {
-    if [ -n "$EVINCE_PID" ]; then
-        kill "$EVINCE_PID" 2>/dev/null
-    fi
-    if [ -n "$WORK_DIR_GLOBAL" ] && [ -d "$WORK_DIR_GLOBAL" ]; then
-        rm -rf "$WORK_DIR_GLOBAL"
-    fi
+    [ -n "$EVINCE_PID" ] && kill "$EVINCE_PID" 2>/dev/null
+    for dir in "${WORK_DIRS[@]}"; do [ -d "$dir" ] && rm -rf "$dir"; done
 }
 trap cleanup EXIT INT TERM
 
-# --- SYSTEMATIC DIAGNOSTICS & LOGGING ---
-error_msg() {
-    local message="$1"
-    local target="$2"
-    if [ -n "$target" ]; then
-        echo "${PROGNAME}: ${target}: ${message}" >&2
-    else
-        echo "${PROGNAME}: ${message}" >&2
-    fi
-}
+error_msg() { echo "${PROGNAME}: ${2:+$2: }$1" >&2; }
 
-# --- DEPENDENCY CHECK ---
 check_dep() {
-    local cmd="$1"
-    local pkg="$2"
+    local cmd="$1" pkg="$2"
     if ! command -v "$cmd" >/dev/null 2>&1; then
-        echo "${PROGNAME}: dependency '${cmd}' (from ${pkg}) is missing" >&2
-        read -p "Install it now via apt? [y/N] " answer < /dev/tty
-        if [[ "$answer" =~ ^[Yy](es)?$ ]]; then
-            sudo apt-get update && sudo apt-get install -y "$pkg"
-        else
-            exit 1
-        fi
+        echo "${PROGNAME}: dependency '${cmd}' (${pkg}) is missing." >&2
+        read -p "Install via apt? [y/N] " ans < /dev/tty
+        [[ "$ans" =~ ^[Yy] ]] && sudo apt-get update && sudo apt-get install -y "$pkg" || exit 1
     fi
 }
 
-check_edge_tts() {
-    if ! command -v edge-tts >/dev/null 2>&1; then
-        echo "${PROGNAME}: dependency 'edge-tts' is missing. Installing via pipx..." >&2
-        check_dep "pipx" "pipx"
-        pipx ensurepath --quiet
-        pipx install edge-tts
-        export PATH="$PATH:$HOME/.local/bin"
-    fi
-}
+# Verify Core Dependencies
+check_dep "pdftotext" "poppler-utils"; check_dep "wget" "wget"; check_dep "mpv" "mpv"
+check_dep "evince" "evince"; check_dep "pipx" "pipx"
 
-check_dep "pdftotext" "poppler-utils"; check_dep "wget" "wget"
-check_dep "mpv" "mpv"; check_dep "evince" "evince"; check_dep "pv" "pv"
-check_edge_tts
+if ! command -v edge-tts >/dev/null 2>&1; then
+    pipx ensurepath --quiet && pipx install edge-tts && export PATH="$PATH:$HOME/.local/bin"
+fi
 
-# --- HELPERS ---
 get_clipboard() {
-    local raw_clip=""
-    if command -v xclip >/dev/null 2>&1; then
-        raw_clip=$(xclip -selection clipboard -o 2>/dev/null)
-    elif command -v xsel >/dev/null 2>&1; then
-        raw_clip=$(xsel --clipboard --output 2>/dev/null)
-    elif command -v wl-paste >/dev/null 2>&1; then
-        raw_clip=$(wl-paste 2>/dev/null)
-    elif command -v pbpaste >/dev/null 2>&1; then
-        raw_clip=$(pbpaste 2>/dev/null)
-    else
-        error_msg "no utility detected to capture clipboard data (xclip/xsel/wl-paste/pbpaste)"
-        return 1
-    fi
-    echo "$raw_clip" | tr -d '\n\r\t '
+    for cmd in xclip xsel wl-paste pbpaste; do
+        if command -v "$cmd" >/dev/null 2>&1; then
+            case "$cmd" in
+                xclip) xclip -selection clipboard -o 2>/dev/null ;;
+                xsel)  xsel --clipboard --output 2>/dev/null ;;
+                *)     "$cmd" 2>/dev/null ;;
+            esac | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' && return 0
+        fi
+    done
+    error_msg "No clipboard utility found."; return 1
 }
 
-# Mapping database functions for readable command short-names
-print_voices() {
-    cat <<EOF
-Available American English Voices (Neural AI Profiles):
-
-  Alias        Gender   Full Edge-TTS Identifier
-  ---------------------------------------------------------
-  aria         Female   en-US-AriaNeural (Default)
-  ava          Female   en-US-AvaNeural
-  emma         Female   en-US-EmmaMultilingualNeural
-  michelle     Female   en-US-MichelleNeural
-  andrew       Male     en-US-AndrewMultilingualNeural
-  brian        Male     en-US-BrianMultilingualNeural
-  christopher  Male     en-US-ChristopherNeural
-  guy          Male     en-US-GuyNeural
-  eric         Male     en-US-EricNeural
-EOF
-}
-
-resolve_voice_alias() {
-    case "${1,,}" in
-        aria)         echo "en-US-AriaNeural" ;;
-        ava)          echo "en-US-AvaNeural" ;;
-        emma)         echo "en-US-EmmaMultilingualNeural" ;;
-        michelle)     echo "en-US-MichelleNeural" ;;
-        andrew)       echo "en-US-AndrewMultilingualNeural" ;;
-        brian)        echo "en-US-BrianMultilingualNeural" ;;
-        christopher)  echo "en-US-ChristopherNeural" ;;
-        guy)          echo "en-US-GuyNeural" ;;
-        eric)         echo "en-US-EricNeural" ;;
-        *)            echo "UNKNOWN" ;;
-    esac
-}
-
-# --- STANDARD GNU USAGE MANIFEST ---
 print_usage() {
-  cat <<EOF
+    cat <<EOF
 Usage: ${PROGNAME} [OPTION]... [URL | TARGET]
-Download, convert, and listen to PDFs as high-quality AI audiobooks.
-
-Mandatory arguments to long options are mandatory for short options too.
-  -p, --pdf              convert input PDF document to MP3 file
-  -o, --open             launch targets based on the specific suffix type
-  -v, --voice [ALIAS]    choose alternative neural voice profile by alias
-                         (Outputs help index list if ALIAS is empty or 'list')
-                         (Runs an active audition preview if no file is provided)
-  -u, --url [LINK]       download PDF from web URL before processing
-                         (reads clipboard content if LINK is omitted)
-  -V, --version          output version information and exit
-  -h, --help             display this help menu and exit
-
-Target Requirements:
-  Target paths passed alongside '--open' must explicitly end with:
-    *.pdf                opens the PDF viewer layout visually ONLY
-    *.mp3                plays the generated audiobook track ONLY
-    *.*                  (trailing dot-star wildcard) opens viewer and audio simultaneously
-
-Report bugs to: <https://github.com>
+Options:
+  --pdf              Convert PDF to MP3
+  --open             Launch file based on extension (.pdf, .mp3, or .*)
+  --voice            Set neural voice
+  --url [LINK]       Download PDF (reads clipboard if LINK is omitted)
+  --version / --help Output info and exit
 EOF
 }
 
-print_version() {
-    echo "${PROGNAME} ${VERSION}"
-}
-
-# --- VOICE AUDITION ENGINE ---
-preview_voice_stream() {
-    local text_sample="Hello! This is a preview of the selected neural AI voice profile matching your playback speed configurations."
-    
-    WORK_DIR_GLOBAL=$(mktemp -d -t pdftompv-XXXXXXXX)
-    local work_dir="$WORK_DIR_GLOBAL"
-    local sample_mp3="$work_dir/preview.mp3"
-    
-    echo "${PROGNAME}: Auditioning voice alias [${SELECTED_VOICE}] at +25% speed..." >&2
-    if ! edge-tts --text "$text_sample" --write-media "$sample_mp3" --rate=+25% --voice "$SELECTED_VOICE" >/dev/null 2>&1; then
-        error_msg "Failed to synthesize voice preview track from network engine."
-        exit 1
-    fi
-    
-    mpv "$sample_mp3"
-}
-
-# --- CORE FUNCTIONS ---
 convert_pdf_to_mp3() {
-    local pdf="$1"
-    local mp3_final="${pdf%.pdf}.mp3"
-    
-    WORK_DIR_GLOBAL=$(mktemp -d -t pdftompv-XXXXXXXX)
-    local work_dir="$WORK_DIR_GLOBAL"
-
-    local start_time=$SECONDS
+    local pdf="$1" mp3_final="${1%.*}.mp3" start_time=$SECONDS
+    local work_dir=$(mktemp -d -t pdftompv-XXXXXXXX) && WORK_DIRS+=("$work_dir")
     local txt_file="$work_dir/extracted.txt"
 
-    echo "${PROGNAME}: extracting text content..." >&2
+    echo "${PROGNAME}: extracting text..." >&2
     pdftotext -raw "$pdf" "$txt_file" 2>/dev/null
-    
-    if [ -s "$txt_file" ]; then
-        sed ':a;N;$!ba;s/\n/ /g' "$txt_file" | sed 's/\.\.\././g' > "$work_dir/cleaned.txt"
-        mv "$work_dir/cleaned.txt" "$txt_file"
-    else
-        error_msg "extraction processing structural failure" "$pdf"
-        exit 1
-    fi
+    if [ ! -s "$txt_file" ]; then error_msg "Extraction failed or file empty" "$pdf"; exit 1; fi
 
-    split -b 25000 "$txt_file" "$work_dir/chunk_"
+    sed ':a;N;$!ba;s/\n/ /g' "$txt_file" | sed 's/\.\.\././g' > "$work_dir/clean.txt"
+    split -d -a 4 -l 300 "$work_dir/clean.txt" "$work_dir/chunk_"
     
-    local chunks=("$work_dir"/chunk_[a-z]*)
-    local total=${#chunks[@]}
-    local count=1
+    local chunks=("$work_dir"/chunk_[0-9]*) total=${#chunks[@]}
+    echo "${PROGNAME}: rendering audiobook segments via [${SELECTED_VOICE}] in parallel..." >&2
 
-    echo "${PROGNAME}: rendering audiobook segments via profile [${SELECTED_VOICE}]..." >&2
+    # Scale parallel jobs up to CPU core count (throttled to limit API rate spikes)
+    local max_jobs=$(nproc 2>/dev/null || echo 4)
+
     for chunk in "${chunks[@]}"; do
-        echo -n "${PROGNAME}: processing compilation matrix chunk [$count/$total]... " >&2
-        if ! edge-tts --file "$chunk" --write-media "${chunk}.mp3" --rate=+25% --voice "$SELECTED_VOICE" >/dev/null 2>&1; then
-            echo "Failed." >&2
+        [ -e "$chunk" ] || continue
+        
+        (
+            for attempt in {1..3}; do
+                if edge-tts --file "$chunk" --write-media "${chunk}.mp3" --rate=+25% --voice "$SELECTED_VOICE" >/dev/null 2>&1; then
+                    exit 0
+                fi
+                sleep 2
+            done
+            error_msg "Chunk processing failure after 3 attempts" "$chunk"
+            exit 1
+        ) &
+
+        # Keep job counts within thread pool bounds
+        while [ $(jobs -r | wc -l) -ge "$max_jobs" ]; do
+            sleep 0.2
+        done
+    done
+
+    # --- LIVE PROCESSING TIMER LOOP ---
+    local elapsed=0
+    while true; do
+        local running_jobs=$(jobs -r | wc -l)
+        [ "$running_jobs" -eq 0 ] && break
+
+        local completed_files=$(find "$work_dir" -name "chunk_*.mp3" -type f | wc -l)
+        echo -ne "${PROGNAME}: Processing... [Time elapsed: ${elapsed}s] [Chunks complete: ${completed_files}/${total}]\r" >&2
+        
+        sleep 1
+        ((elapsed++))
+    done
+    echo "" >&2 
+    
+    # Verify all compiled chunks successfully generated matching media pieces
+    for chunk in "${chunks[@]}"; do
+        if [ ! -s "${chunk}.mp3" ]; then
+            error_msg "Audio synthesis step incomplete due to job execution tracking faults."
             exit 1
         fi
-        echo "Done." >&2
-        ((count++))
     done
 
     echo "${PROGNAME}: stitching processed binary audio tracks..." >&2
-    cat "$work_dir"/chunk_*.mp3 > "$mp3_final"
-
-    local total_time=$(( SECONDS - start_time ))
-    echo "${PROGNAME}: compilation complete -> ${mp3_final} (${total_time}s)" >&2
+    cat "$work_dir"/chunk_[0-9]*.mp3 > "$mp3_final"
+    echo "${PROGNAME}: complete -> ${mp3_final}" >&2
 }
 
-open_file() {
-    local pdf="$1"
-    local mp3="${pdf%.pdf}.mp3"
-    
-    case "$ORIGINAL_SUFFIX" in
-        pdf)
-            if [ -f "$pdf" ]; then
-                echo "${PROGNAME}: launching active document layout reader..."
-                evince "$pdf" >/dev/null 2>&1
-            else
-                error_msg "document location could not be verified" "$pdf"
-                exit 1
-            fi
-            ;;
-        mp3)
-            if [ -f "$mp3" ]; then
-                echo "${PROGNAME}: playing audiobook stream..."
-                mpv "$mp3"
-            else
-                error_msg "audio sequence target missing" "$mp3"
-                exit 1
-            fi
-            ;;
-        wildcard)
-            if [ -f "$pdf" ]; then
-                evince "$pdf" >/dev/null 2>&1 &
-                EVINCE_PID=$!
-            else
-                error_msg "warning: target unavailable, layout bypass triggered" "$pdf"
-            fi
-
-            if [ -f "$mp3" ]; then
-                echo "${PROGNAME}: running dual audio-text synchronized reader..."
-                mpv "$mp3"
-            else
-                error_msg "audio synchronization breakdown: track missing" "$mp3"
-                exit 1
-            fi
-            ;;
-    esac
-}
-
-download_pdf() {
-    local url="$1"
-    
-    if [[ ! "$url" =~ ^https?:// ]]; then
-        error_msg "unsupported URI network routing schema" "$url"
-        exit 1
-    fi
-
-    local raw_filename=$(basename "$url")
-    local filename=$(python3 -c "import urllib.parse; print(urllib.parse.unquote('$raw_filename'))")
-    
-    if [ -z "$filename" ] || [[ "$filename" == \?* ]]; then
-        filename="downloaded_document.pdf"
-    fi
-
-    if [[ "$filename" != *.pdf ]]; then
-        filename="${filename}.pdf"
-    fi
-
-    wget -q --show-progress -O "$filename" "$url" || exit 1
-    echo "$filename"
-}
-
-# --- MAIN COMMAND OPTION PARSER LOOP ---
-if [ $# -eq 0 ]; then
-    print_usage
-    exit 2
-fi
-
-input=""
-use_url=false
-do_pdf=false
-do_open=false
-glob_detected=false
+# --- PARSE COMMAND LINE ARGUMENTS ---
+[ $# -eq 0 ] && print_usage && exit 2
+do_pdf=false; do_open=false; use_url=false; voice_test=false; input=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        -p|--pdf)  do_pdf=true; shift ;;
-        -o|--open) do_open=true; shift ;;
-        -V|--version) print_version; exit 0 ;;
-        -h|--help) print_usage; exit 0 ;;
-        -v|--voice)
-            if [ -z "$2" ] || [[ "$2" == -* ]]; then
-                print_voices
-                exit 0
+        --pdf)  do_pdf=true; shift ;;
+        --open) do_open=true; shift ;;
+        --version) echo "${PROGNAME} ${VERSION}"; exit 0 ;;
+        --help)    print_usage; exit 0 ;;
+        --voice)
+            if [ -z "$2" ]; then
+                echo "Opening Azure voice gallery: https://json2video.com/ai-voices/azure/voices/" >&2; exit 0
             fi
-            
-            LOOKUP=$(resolve_voice_alias "$2")
-            if [ "$LOOKUP" = "LIST" ]; then
-                print_voices
-                exit 0
-            elif [ "$LOOKUP" = "UNKNOWN" ]; then
-                error_msg "invalid voice profile alias name -- '$2'"
-                echo "Run '${PROGNAME} --voice list' to inspect valid configuration keys." >&2
-                exit 2
-            fi
-            
-            SELECTED_VOICE="$LOOKUP"
-            VOICE_EXPLICITLY_SET=true
-            shift 2
-            ;;
-        -u|--url)  
-            use_url=true 
-            if [ -n "$2" ] && [[ "$2" != -* ]]; then
-                input="$2"
-                shift 2
-            else
-                echo "${PROGNAME}: extracting web stream pointer from system clipboard..." >&2
-                input=$(get_clipboard) || exit 1
-                shift 1
-            fi
-            ;;
-        -*)
-            error_msg "unrecognized choice option flag -- '$1'"
-            echo "Try '${PROGNAME} --help' for explicit mapping instructions." >&2
-            exit 2
-            ;;
-        *)  
-            # GLOB INTERCEPTION LAYER:
-            # If input is ALREADY set, and we encounter another trailing argument, 
-            # the shell expanded document.* into two separate names. Catch it!
-            if [ -n "$input" ]; then
-                glob_detected=true
-            else
-                input="$1"
-            fi
-            shift 
-            ;;
+            SELECTED_VOICE="$2"; voice_test=true; shift 2 ;;
+        --url)
+            use_url=true
+            if [ -n "$2" ] && [[ "$2" != -* ]]; then input="$2"; shift 2; else input=$(get_clipboard) || exit 1; shift 1; fi ;;
+        -*)     error_msg "Unrecognized option '$1'"; exit 2 ;;
+        *)      input="$1"; shift ;;
     esac
 done
 
-# INTERCEPT VOICE PREVIEW ACTION
-if [ "$VOICE_EXPLICITLY_SET" = true ] && [ -z "$input" ] && [ "$do_pdf" = false ] && [ "$do_open" = false ]; then
-    preview_voice_stream
-    exit 0
+# Short-circuit for solo voice testing
+if [ "$voice_test" = true ] && [ -z "$input" ] && [ "$do_pdf" = false ] && [ "$do_open" = false ]; then
+    work_dir=$(mktemp -d -t pdftompv-XXXXXXXX) && WORK_DIRS+=("$work_dir")
+    edge-tts --text "Hello! Previewing voice profile." --write-media "$work_dir/t.mp3" --rate=+25% --voice "$SELECTED_VOICE" >/dev/null 2>&1
+    mpv "$work_dir/t.mp3"; exit 0
 fi
 
-if [ -z "$input" ]; then
-    error_msg "missing file target or URL parameters path asset"
-    echo "Try '${PROGNAME} --help' for syntax layout definitions." >&2
-    exit 2
+[ -z "$input" ] && { error_msg "Missing target file or URL"; exit 2; }
+[[ "$input" =~ ^https?:// ]] && use_url=true
+
+# Handle URL Downloading
+if [ "$use_url" = true ]; then
+    clean_url="${input%%\?*}"
+    filename=$(basename "$clean_url")
+    filename=$(python3 -c "import urllib.parse; print(urllib.parse.unquote('''$filename'''))")
+    [[ "$filename" != *.pdf ]] && filename="${filename%.*}.pdf"
+    [ -z "$filename" ] && filename="downloaded_document.pdf"
+    wget -q --show-progress -O "$filename" "$input" || exit 1
+    input="$filename"
 fi
 
-if [[ "$input" =~ ^https?:// ]]; then
-    use_url=true
-fi
-
-# ENFORCE STRICT POSIX LOCAL SUFFIX VALIDATION LAWS
-if [ "$use_url" = false ]; then
-    # Force full dual sync behavior immediately if shell expanded multiple positional paths
-    if [ "$glob_detected" = true ] || [[ "$input" =~ \.\*$ ]]; then
-        ORIGINAL_SUFFIX="wildcard"
-        # Extract everything before the file suffix extension
-        base_prefix="${input%.*}"
-        input="${base_prefix}.pdf"
-    elif [[ "$input" =~ \.pdf$ ]]; then
-        ORIGINAL_SUFFIX="pdf"
-        base_prefix="${input%.pdf}"
-    elif [[ "$input" =~ \.mp3$ ]]; then
-        ORIGINAL_SUFFIX="mp3"
-        base_prefix="${input%.mp3}"
-        input="${base_prefix}.pdf" 
-    else
-        error_msg "unsupported execution target pattern layout"
-        echo "Target paths must terminate explicitly in '.pdf', '.mp3', or '.*'." >&2
-        exit 2
-    fi
+# Standardize File Extensions & Track Suffix Intent
+base="${input%.*}"
+if [ "$use_url" = true ] || { [[ "$input" == *.* ]] && [[ "$input" != *.pdf && "$input" != *.mp3 ]]; }; then
+    mode="wildcard"
+elif [[ "$input" == *.pdf ]]; then
+    mode="pdf"
+elif [[ "$input" == *.mp3 ]]; then
+    mode="mp3"
 else
-    ORIGINAL_SUFFIX="wildcard"
+    error_msg "Target must end in .pdf, .mp3, or .*"; exit 2
 fi
 
-# Remote Stream Interception Track
-[ "$use_url" = true ] && input=$(download_pdf "$input")
+# Execute Operational Chain
+[ "$do_pdf" = true ] && convert_pdf_to_mp3 "${base}.pdf"
 
-# Core Sequential Logic Pipelines
-[ "$do_pdf" = true ] && convert_pdf_to_mp3 "$input"
-[ "$do_open" = true ] && open_file "$input"
-
-exit 0
+if [ "$do_open" = true ]; then
+    case "$mode" in
+        pdf)      [ -f "${base}.pdf" ] && evince "${base}.pdf" >/dev/null 2>&1 || { error_msg "PDF missing" "${base}.pdf"; exit 1; } ;;
+        mp3)      [ -f "${base}.mp3" ] && mpv "${base}.mp3" || { error_msg "MP3 missing" "${base}.mp3"; exit 1; } ;;
+        wildcard) [ -f "${base}.pdf" ] && (evince "${base}.pdf" >/dev/null 2>&1 & EVINCE_PID=$!)
+                  [ -f "${base}.mp3" ] && mpv "${base}.mp3" || { error_msg "MP3 missing" "${base}.mp3"; exit 1; } ;;
+    esac
+fi

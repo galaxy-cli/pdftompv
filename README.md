@@ -1,119 +1,84 @@
 # pdftompv
 
-`pdftompv` is a lightweight, zero-overhead POSIX-compliant CLI utility designed to transform PDFs into high-quality AI-narrated audiobooks. By leveraging `pdftotext` for processing extraction, Microsoft’s Neural TTS engine (`edge-tts`), and `mpv` for playback control, it delivers a hands-free reading workflow directly in your terminal.
+`pdftompv` is a lightweight, high-performance command-line utility written in Bash that downloads, parallel-processes, and converts PDF documents into high-quality AI audiobooks using Microsoft Edge's Neural Text-to-Speech engine (`edge-tts`). 
 
-## Key Features
+It natively supports synchronized dual-reading by opening your system's document viewer (`evince`) alongside your terminal media player (`mpv`) with a built-in live tracking progress engine.
 
-* **High-Quality Neural Voices**: Utilizes modern AI text-to-speech engine outputs (`edge-tts`) instead of robotic legacy TTS tools.
-* **Large Document Stability**: Automatically slices massive text structures (500+ pages) into transient chunks to ensure uninterrupted processing.
-* **Smart UI Thread Tracking**: Synchronizes visual viewing threads (`evince`) with the active audio stream (`mpv`). Closing your media viewer window automatically terminates background tasks.
-* **Clipboard Automation**: Invoking `--url` without an argument scans your system clipboard to capture remote document endpoints safely.
-* **Flexible Suffix Routing**: Built-in wildcard support dynamically triggers tailored app behaviors based on extension type.
+## Features
 
----
+*   **Parallel Acceleration:** Automatically scales across multiple CPU cores to render large books concurrently instead of one section at a time.
+*   **Live Status Monitor:** Displays a dynamic, in-place terminal timer showing compilation elapsed time and chunk completion rates.
+*   **Synchronized Playback:** Launches parallel visual and audio tracks simultaneously using wildcard selections.
+*   **Clipboard Integration:** Sniffs links or target tracks directly out of your X11, Wayland, or macOS system clipboards natively.
+*   **Resilient API Architecture:** Implements connection throttling and localized fallback loops to bypass API speed bans.
+
+## Requirements & Dependencies
+
+The script works on Linux (Ubuntu/Debian layout defaults below) and macOS. It uses native platform packages alongside Python:
+
+```bash
+# Install core system dependencies on Ubuntu/Debian
+sudo apt update && sudo apt install poppler-utils wget mpv evince pipx
+
+# Ensure pipx is in your command path
+pipx ensurepath
+```
+*Note: The script safely checks for and attempts to auto-install missing system dependencies interactively upon its initial boot cycle.*
 
 ## Installation
 
-### Prerequisites
-The utility automatically checks for missing components on launch and prompts to install them via `apt`. To install dependencies manually:
+1. Copy the bash script text into a local file named `pdftompv`.
+2. Move it to a secure binary execution path and grant it terminal runtime credentials:
 
 ```bash
-sudo apt-get update && sudo apt-get install poppler-utils wget mpv evince pv python3 pipx
+chmod +x pdftompv
+sudo mv pdftompv ~/./local/bin/
 ```
 
-### Script Deployment
-1. Clone this repository or copy the code components into a file named `pdftompv`:
-   ```bash
-   git clone https://github.com
-   cd pdftompv
-   ```
-2. Make the script executable:
-   ```bash
-   chmod +x pdftompv
-   ```
-3. Move it to your local environment binary execution directory:
-   ```bash
-   sudo mv pdftompv /usr/local/bin/
-   ```
-
----
-
-## Command Interface Layout
+## Usage Instructions
 
 ```text
 Usage: pdftompv [OPTION]... [URL | TARGET]
+Download, convert, and listen to PDFs as high-quality AI audiobooks.
 
 Options:
-  -p, --pdf              Convert input PDF document to an MP3 file
-  -o, --open             Launch files according to suffix parameters
-  -v, --voice [ALIAS]    Select neural voice profile by short alias
-                         (Outputs a voice mapping list if alias is missing or 'list')
-                         (Runs an audition preview if no file target is specified)
-  -u, --url [LINK]       Download a remote PDF before processing
-                         (Pulls text links from the clipboard if LINK is omitted)
-  -V, --version          Output version information and exit
-  -h, --help             Display the help options configuration map
+  --pdf              Convert input PDF document to MP3 file
+  --open             Launch targets based on the specific suffix type
+  --voice            Choose neural voice
+  --url [LINK]       Download PDF from web before processing (reads clipboard if LINK is omitted)
+  --version          Output version information and exit
+  --help             Display this help menu and exit
 ```
+
+### Targeted Suffix Requirements (`--open` layouts)
+*   `filename.pdf` $\rightarrow$ Launches the visual layout document reader **only**.
+*   `filename.mp3` $\rightarrow$ Plays the audio track sequence inside `mpv` **only**.
+*   `filename.` *(Trailing Dot Wildcard)* $\rightarrow$ Launches layout layout and audio **simultaneously**.
 
 ---
 
-## Usage Examples
+## Practical Examples
 
-### 1. Compile a Local Audiobook
-Extract text profiles and generate a permanent `.mp3` output file:
+### 1. Download, Convert, and Read a Web PDF Synchronously
+Fetches a remote document, converts the pages in parallel, opens Evince, and begins playing the audio:
 ```bash
-pdftompv --pdf manual.pdf
+pdftompv --url https://example.com/document.pdf --pdf --open
 ```
 
-### 2. Download and Convert via Clipboard Links
-Copy an HTTP link to a PDF from your web browser, then execute:
+### 2. Auto-Extract a Web Link From Your Clipboard
+Omit the link after `--url` to pull a PDF URL directly out of your copy history buffer:
 ```bash
-pdftompv --pdf --url
+pdftompv --url --pdf --open
 ```
 
-### 3. Open Targets Selectively Using Smart Suffixes
-The `-o` / `--open` loop alters execution behaviors based on how you reference the filename:
-
-* **Open the Text Visual Layout ONLY**:
-  ```bash
-  pdftompv --open document.pdf
-  ```
-* **Play the Audiobook Track ONLY**:
-  ```bash
-  pdftompv --open document.mp3
-  ```
-* **Simultaneous Audio and Visual Playback**:
-  Using a trailing star wildcard launches the viewer and audio player synchronously:
-  ```bash
-  pdftompv --open document.*
-  ```
-
-### 4. Voice Configuration Auditions
-Output the catalog mapping sheet for available neural profiles:
+### 3. Change Voice Engines and Play Audio Only
+Listen to an already-generated local audiobook track with a custom neural voice profile:
 ```bash
-pdftompv --voice list
-```
-Instantly listen to a voice preview text sample at `+25%` audiobook speed:
-```bash
-pdftompv --voice guy
-```
-Compile a new project using a distinct voice profile identity:
-```bash
-pdftompv --voice ava --pdf book.pdf
+pdftompv --voice en-US-GuyNeural --open my_book.mp3
 ```
 
----
-
-## Available Voice Registry
-
-| Short Alias | Identity Gender | Technical System String Name |
-| :--- | :--- | :--- |
-| `aria` | Female | `en-US-AriaNeural` *(Default)* |
-| `ava` | Female | `en-US-AvaNeural` |
-| `emma` | Female | `en-US-EmmaMultilingualNeural` |
-| `michelle` | Female | `en-US-MichelleNeural` |
-| `andrew` | Male | `en-US-AndrewMultilingualNeural` |
-| `brian` | Male | `en-US-BrianMultilingualNeural` |
-| `christopher` | Male | `en-US-ChristopherNeural` |
-| `guy` | Male | `en-US-GuyNeural` |
-| `eric` | Male | `en-US-EricNeural` |
+### 4. Reopen Both Layout and Audio Tracks for an Existing File
+Uses the shorthand trailing dot shortcut to launch the media player locked into lockstep with the text layout:
+```bash
+pdftompv --open my_book.
+```
