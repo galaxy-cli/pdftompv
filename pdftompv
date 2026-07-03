@@ -61,6 +61,8 @@ Options:
   --voice            Set neural voice
   --url [LINK]       Download PDF (reads clipboard if LINK is omitted)
   --version / --help Output info and exit
+
+  Report bugs to: <207926666+galaxy-cli@://github.com>
 EOF
 }
 
