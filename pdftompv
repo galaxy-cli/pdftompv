@@ -9,7 +9,7 @@
 #
 # Project: https://github.com
 
-VERSION="1.9.7"
+VERSION="1.9.8"
 PROGNAME=$(basename "$0")
 SELECTED_VOICE="en-US-AriaNeural"
 declare -a WORK_DIRS=()
@@ -62,7 +62,7 @@ Options:
   --url [LINK]       Download PDF (reads clipboard if LINK is omitted)
   --version / --help Output info and exit
 
-  Report bugs to: <207926666+galaxy-cli@://github.com>
+Report bugs to: <207926666+galaxy-cli@://github.com>
 EOF
 }
 
