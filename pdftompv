@@ -9,7 +9,7 @@
 #
 # Project: https://github.com
 
-VERSION="1.9.8"
+VERSION="1.9.9"
 PROGNAME=$(basename "$0")
 SELECTED_VOICE="en-US-AriaNeural"
 declare -a WORK_DIRS=()
@@ -60,7 +60,8 @@ Options:
   --open             Launch file based on extension (.pdf, .mp3, or .*)
   --voice            Set neural voice
   --url [LINK]       Download PDF (reads clipboard if LINK is omitted)
-  --version / --help Output info and exit
+  --version          List script version
+  --help             List help menu
 
 Report bugs to: <207926666+galaxy-cli@://github.com>
 EOF
